@@ -50,6 +50,12 @@ export function buildSeries(summaryRows, driftRows) {
   const snapshots = snaps.map((row, idx) => {
     const nodes = int(row.nodes);
     const prev = idx > 0 ? int(snaps[idx - 1].nodes) : null;
+    // 관측 간격 — 스냅샷은 보통 하루 1회지만 리허설처럼 18일 벌어진 점이 섞인다.
+    // 그 점의 dNodes를 「일 증가량」으로 그리면 최근 추세가 통째로 눌린다 → 일 평균으로 환산해 쓴다.
+    const prevAt = idx > 0 ? Date.parse(snaps[idx - 1].at) : NaN;
+    const curAt = Date.parse(row.at);
+    const gapDays = Number.isFinite(prevAt) && Number.isFinite(curAt)
+      ? Math.round(((curAt - prevAt) / 86400000) * 100) / 100 : null;
     const sumAgg = num(row.sumAgg), sumVh = num(row.sumVh);
     const priceA = num(row.priceA), priceP = num(row.priceP);
     return {
@@ -57,6 +63,9 @@ export function buildSeries(summaryRows, driftRows) {
       date: day(row.at),
       nodes,
       dNodes: nodes != null && prev != null ? nodes - prev : null,
+      gapDays,
+      dNodesPerDay: nodes != null && prev != null && gapDays > 0
+        ? Math.round(((nodes - prev) / gapDays) * 10) / 10 : null,
       rootUSD: num(row.rootUSD),
       priceP, priceA,
       sumAgg, sumVh, sumStkA: num(row.sumStkA),

@@ -312,9 +312,11 @@ const dayNum = (iso) => Math.floor(new Date(iso).getTime() / 86400000);
 const W = 720, H = 250, PAD = { l: 54, r: 78, t: 16, b: 28 };
 const IW = W - PAD.l - PAD.r, IH = H - PAD.t - PAD.b;
 
-function scaleY(min, max) {
+function scaleY(min, max, floorZero = false) {
   if (!(max > min)) { const c = max || 1; min = c * 0.95; max = c * 1.05; }
   const m = (max - min) * 0.12; min -= m; max += m;
+  // 인원·비율처럼 음수가 존재할 수 없는 값은 축이 0 아래로 내려가면 거짓 여백이 생긴다
+  if (floorZero && min < 0) min = 0;
   return { min, max, y: (v) => PAD.t + IH - ((v - min) / (max - min)) * IH };
 }
 const xAt = (i, n) => n <= 1 ? PAD.l + IW / 2 : PAD.l + (i * IW) / (n - 1);
@@ -340,11 +342,11 @@ function placeholder(title, cap, n) {
 }
 
 // series: [{label, color, vals:[number|null]}]
-function lineChart({ title, cap, xLabels, series, fmt, area = false, step = false }) {
+function lineChart({ title, cap, xLabels, series, fmt, area = false, step = false, floorZero = false }) {
   const pts = xLabels.filter((_, i) => series.some((s) => s.vals[i] != null)).length;
   if (pts < 2) return placeholder(title, cap, pts);
   const all = series.flatMap((s) => s.vals).filter((v) => v != null);
-  const sc = scaleY(Math.min(...all), Math.max(...all));
+  const sc = scaleY(Math.min(...all), Math.max(...all), floorZero);
   const n = xLabels.length;
   let body = frame(sc, xLabels, fmt), legend = '';
 
@@ -380,7 +382,8 @@ function lineChart({ title, cap, xLabels, series, fmt, area = false, step = fals
 function barChart({ title, cap, xLabels, vals, fmt, avgWindow = 7 }) {
   const good = vals.filter((v) => v != null);
   if (good.length < 2) return placeholder(title, cap, good.length);
-  const sc = scaleY(Math.min(0, ...good), Math.max(...good));
+  // 막대는 0 기준선에서 자란다 — 축 아래쪽에 여백을 주면 기준선이 떠서 길이 비교가 왜곡된다
+  const sc = scaleY(Math.min(0, ...good), Math.max(...good), true);
   const n = xLabels.length, bw = Math.max(6, Math.min(34, (IW / n) * 0.55));
   let body = frame(sc, xLabels, fmt);
   const zero = sc.y(0);
@@ -557,15 +560,15 @@ function renderStatic() {
       fmt: (v) => (v / 1e6).toFixed(2) + 'M',
     }),
     barChart({
-      title: '일 증가량', cap: '직전 스냅샷 대비 관측 신규', xLabels: xl,
-      vals: S.map((s) => s.dNodes), fmt: (v) => nf(Math.round(v)),
+      title: '일 평균 신규', cap: '직전 스냅샷 대비 관측 신규 ÷ 관측 간격(일)', xLabels: xl,
+      vals: S.map((s) => s.dNodesPerDay ?? null), fmt: (v) => nf(Math.round(v)),
     }),
     lineChart({
       title: '등급 기준 가치', cap: 'aggregator×A시세 + VaultHelper×P시세', xLabels: xl, area: true,
       series: [{ label: '가치', color: 'var(--accent)', vals: S.map((s) => s.rootUSD) }], fmt: usd,
     }),
     lineChart({
-      title: '등급별 인원 (V1 · V5 · V6)', cap: 'V6 판정 규칙은 미확정 — 참고치', xLabels: xl,
+      title: '등급별 인원 (V1 · V5 · V6)', cap: 'V6 판정 규칙은 미확정 — 참고치', xLabels: xl, floorZero: true,
       series: [
         { label: 'V1', color: C3[0], vals: S.map(rankAt(1)) },
         { label: 'V5', color: C3[1], vals: S.map(rankAt(5)) },
@@ -573,7 +576,7 @@ function renderStatic() {
       ], fmt: (v) => nf(Math.round(v)),
     }),
     lineChart({
-      title: '슬롯 상위 3 점유율', cap: '등급 기준 가치 기준 · 순위 라벨만(주소 비공개)', xLabels: xl,
+      title: '슬롯 상위 3 점유율', cap: '등급 기준 가치 기준 · 순위 라벨만(주소 비공개)', xLabels: xl, floorZero: true,
       series: [1, 2, 3].map((i, k) => ({ label: '슬롯 ' + i, color: C3[k], vals: S.map(slotShare(i)) })),
       fmt: (v) => v.toFixed(1) + '%',
     }),
